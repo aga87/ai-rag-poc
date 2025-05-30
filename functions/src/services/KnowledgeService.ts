@@ -23,6 +23,31 @@ export class KnowledgeService {
     return knowledgeBase;
   }
 
+  public async ask(query: string): Promise<string> {
+    // TODO: load from script to vector DB instead
+    const knowledgeBase = await this.loadKnowledgeBase(
+      "src/docs/photography-content.pdf"
+    );
+    const chunks = await this.retrieveRelevantChunks(knowledgeBase, query);
+    return await this.openAiService.askOpenAI(query, chunks);
+  }
+
+  private async retrieveRelevantChunks(
+    knowledgeBase: EmbeddedChunk[],
+    query: string,
+    topK = 5
+  ): Promise<string[]> {
+    const queryEmbedding = await this.openAiService.createEmbedding(query);
+    const similarities = knowledgeBase.map((chunk) => ({
+      content: chunk.content,
+      similarity: this.getCosineSimilarity(queryEmbedding, chunk.embedding),
+    }));
+    return similarities
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, topK)
+      .map((c) => c.content);
+  }
+
   /**
    * Note: for best results, consider excluding title pages and TOC from the PDF
    */
@@ -64,5 +89,12 @@ export class KnowledgeService {
     }
 
     return chunks;
+  }
+
+  private getCosineSimilarity(a: number[], b: number[]): number {
+    const dot = a.reduce((sum, val, i) => sum + val * b[i], 0);
+    const normA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
+    const normB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
+    return dot / (normA * normB);
   }
 }

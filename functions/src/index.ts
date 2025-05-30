@@ -1,4 +1,4 @@
 import "dotenv/config";
 import "./startup/debug";
 
-export { helloWorld } from "./handlers";
+export { ask, helloWorld } from "./handlers";
