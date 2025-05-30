@@ -1,3 +1,4 @@
-import { KnowledgeService } from "../services";
+import { KnowledgeService, OpenAiApiService } from "../services";
 
-export const knowledgeService = new KnowledgeService();
+const openAiService = new OpenAiApiService();
+export const knowledgeService = new KnowledgeService(openAiService);
