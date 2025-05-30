@@ -1,7 +1,28 @@
+import { OpenAiApiService } from "./OpenAIService";
 import { parsePdf } from "../utils/parsePdf";
 import { debugLog } from "../startup/debug";
+import { type EmbeddedChunk } from "../types";
 
 export class KnowledgeService {
+  private openAiService: OpenAiApiService;
+
+  constructor(openAiService: OpenAiApiService) {
+    this.openAiService = openAiService;
+  }
+
+  public async loadKnowledgeBase(pdfPath: string): Promise<EmbeddedChunk[]> {
+    const chunks = await this.parsePdfToParagraphBasedChunks(pdfPath);
+    const knowledgeBase: EmbeddedChunk[] = [];
+
+    for (const chunk of chunks) {
+      const embedding = await this.openAiService.createEmbedding(chunk);
+      // Load to memory - TODO: use vector DB instead
+      knowledgeBase.push({ content: chunk, embedding });
+    }
+
+    return knowledgeBase;
+  }
+
   /**
    * Note: for best results, consider excluding title pages and TOC from the PDF
    */
