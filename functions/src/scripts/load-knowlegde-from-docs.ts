@@ -1,9 +1,9 @@
-import { knowledgeService } from "../startup/services";
+import { ragService } from "../startup/services";
 import { debugLog } from "../startup/debug";
 
 (async () => {
   try {
-    const chunks = await knowledgeService.parsePdfToParagraphBasedChunks(
+    const chunks = await ragService.parsePdfToParagraphBasedChunks(
       "src/docs/photography-content.pdf",
       500
     );

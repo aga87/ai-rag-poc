@@ -3,7 +3,7 @@ import { parsePdf } from "../utils/parsePdf";
 import { debugLog } from "../startup/debug";
 import { type EmbeddedChunk } from "../types";
 
-export class KnowledgeService {
+export class RagService {
   private openAiService: OpenAiApiService;
 
   constructor(openAiService: OpenAiApiService) {

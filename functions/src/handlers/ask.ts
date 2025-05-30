@@ -1,7 +1,7 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { httpsOptions } from "../config";
 import { errorMiddleware } from "../middleware";
-import { knowledgeService } from "../startup/services";
+import { ragService } from "../startup/services";
 
 export const ask = onRequest(
   httpsOptions,
@@ -13,7 +13,7 @@ export const ask = onRequest(
       return;
     }
 
-    const answer = await knowledgeService.ask(query);
+    const answer = await ragService.ask(query);
     res.json({ answer });
   })
 );
