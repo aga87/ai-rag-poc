@@ -1,7 +1,7 @@
 import { defineSecret } from "firebase-functions/params";
 import OpenAI from "openai";
 
-const OPENAI_API_KEY = defineSecret("OPENAI_API_KEY");
+export const OPENAI_API_KEY = defineSecret("OPENAI_API_KEY");
 
 export class OpenAiApiService {
   private openai?: OpenAI;

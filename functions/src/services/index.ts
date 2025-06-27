@@ -1,2 +1,2 @@
-export * from "./KnowledgeService";
+export * from "./RagService";
 export * from "./OpenAIService";
