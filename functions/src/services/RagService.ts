@@ -1,3 +1,4 @@
+import { GoogleCloudStorageService } from "./GoogleCloudStorageService";
 import { OpenAiApiService } from "./OpenAIService";
 import { parsePdf } from "../utils/parsePdf";
 import { debugLog } from "../startup/debug";
@@ -5,13 +6,28 @@ import { type EmbeddedChunk } from "../types";
 
 export class RagService {
   private openAiService: OpenAiApiService;
+  private googleCloudStorageService: GoogleCloudStorageService;
 
-  constructor(openAiService: OpenAiApiService) {
+  private bucketName = "mg_rag_poc_docs";
+  private bucketFileName = "photography-content.pdf";
+
+  constructor(
+    openAiService: OpenAiApiService,
+    googleCloudStorageService: GoogleCloudStorageService
+  ) {
     this.openAiService = openAiService;
+    this.googleCloudStorageService = googleCloudStorageService;
   }
 
-  public async loadKnowledgeBase(pdfPath: string): Promise<EmbeddedChunk[]> {
-    const chunks = await this.parsePdfToParagraphBasedChunks(pdfPath);
+  public async loadKnowledgeBase(): Promise<EmbeddedChunk[]> {
+    debugLog("Loading knowledge base: reading PDF from bucket...");
+    const pdfBuffer = await this.googleCloudStorageService.readFileContents(
+      this.bucketName,
+      this.bucketFileName
+    );
+
+    debugLog("Loading knowledge base: parsing PDF into chunks...");
+    const chunks = await this.parsePdfToParagraphBasedChunks(pdfBuffer);
     const knowledgeBase: EmbeddedChunk[] = [];
 
     for (const chunk of chunks) {
@@ -24,10 +40,10 @@ export class RagService {
   }
 
   public async ask(query: string): Promise<string> {
-    // TODO: load from script to vector DB instead
-    const knowledgeBase = await this.loadKnowledgeBase(
-      "src/docs/photography-content.pdf"
-    );
+    // TODO: load on app start or on file upload
+    const knowledgeBase = await this.loadKnowledgeBase();
+
+    debugLog("Retrieving relevant chunks from knowledge base...");
     const chunks = await this.retrieveRelevantChunks(knowledgeBase, query);
     return await this.openAiService.askOpenAI(query, chunks);
   }
@@ -52,13 +68,13 @@ export class RagService {
    * Note: for best results, consider excluding title pages and TOC from the PDF
    */
   public async parsePdfToParagraphBasedChunks(
-    filePath: string,
+    pdfBuffer: Buffer,
     maxWordsPerChunk = 500
   ): Promise<string[]> {
     debugLog(
       "Parsing PDF to chunks with proper greedy grouping (~500 words per chunk without cutting text mid-paragraph)..."
     );
-    const text = await parsePdf(filePath);
+    const text = await parsePdf(pdfBuffer);
 
     // Split by paragraph (2 or more line breaks)
     const paragraphs = text
