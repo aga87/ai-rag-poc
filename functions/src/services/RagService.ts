@@ -1,5 +1,6 @@
 import { GoogleCloudStorageService } from "./GoogleCloudStorageService";
 import { OpenAiApiService } from "./OpenAIService";
+import { VectorStoreService } from "./VectorStoreService";
 import { parsePdf } from "../utils/parsePdf";
 import { debugLog } from "../startup/debug";
 import { type EmbeddedChunk } from "../types";
@@ -7,16 +8,20 @@ import { type EmbeddedChunk } from "../types";
 export class RagService {
   private openAiService: OpenAiApiService;
   private googleCloudStorageService: GoogleCloudStorageService;
+  private vectorStoreService: VectorStoreService;
 
   private bucketName = "mg_rag_poc_docs";
   private bucketFileName = "photography-content.pdf";
+  private vectorStoreCollectionName = "knowledge_base";
 
   constructor(
     openAiService: OpenAiApiService,
-    googleCloudStorageService: GoogleCloudStorageService
+    googleCloudStorageService: GoogleCloudStorageService,
+    vectorStoreService: VectorStoreService
   ) {
     this.openAiService = openAiService;
     this.googleCloudStorageService = googleCloudStorageService;
+    this.vectorStoreService = vectorStoreService;
   }
 
   public async loadKnowledgeBase(): Promise<EmbeddedChunk[]> {
@@ -28,19 +33,29 @@ export class RagService {
 
     debugLog("Loading knowledge base: parsing PDF into chunks...");
     const chunks = await this.parsePdfToParagraphBasedChunks(pdfBuffer);
-    const knowledgeBase: EmbeddedChunk[] = [];
 
-    for (const chunk of chunks) {
-      const embedding = await this.openAiService.createEmbedding(chunk);
-      // Load to memory - TODO: use vector DB instead
-      knowledgeBase.push({ content: chunk, embedding });
-    }
+    debugLog("Loading knowledge base: creating embeddings...");
 
-    return knowledgeBase;
+    const embeddings: EmbeddedChunk[] = await Promise.all(
+      chunks.map(async (chunk) => ({
+        content: chunk,
+        embedding: await this.openAiService.createEmbedding(chunk),
+      }))
+    );
+
+    debugLog("Loading knowledge base: saving embeddings to vector DB...");
+    await this.vectorStoreService.upsertChunks(
+      this.vectorStoreCollectionName,
+      embeddings
+    );
+
+    debugLog("Knowledge base loaded.");
+
+    return embeddings;
   }
 
   public async ask(query: string): Promise<string> {
-    // TODO: load on app start or on file upload
+    // TODO: load on app start or on file upload, and read from the DB on each request
     const knowledgeBase = await this.loadKnowledgeBase();
 
     debugLog("Retrieving relevant chunks from knowledge base...");

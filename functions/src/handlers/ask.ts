@@ -2,10 +2,21 @@ import { onRequest } from "firebase-functions/v2/https";
 import { httpsOptions } from "../config";
 import { errorMiddleware } from "../middleware";
 import { ragService } from "../startup/services";
-import { OPENAI_API_KEY } from "../services";
+import {
+  OPENAI_API_KEY,
+  QDRANT_API_KEY,
+  QDRANT_CLUSTER_URL,
+} from "../services";
 
 export const ask = onRequest(
-  { ...httpsOptions, secrets: [OPENAI_API_KEY.name] },
+  {
+    ...httpsOptions,
+    secrets: [
+      OPENAI_API_KEY.name,
+      QDRANT_API_KEY.name,
+      QDRANT_CLUSTER_URL.name,
+    ],
+  },
   errorMiddleware(async (req, res) => {
     const query = req.body.query;
 
