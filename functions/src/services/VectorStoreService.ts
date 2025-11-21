@@ -43,9 +43,16 @@ export class VectorStoreService {
 
   private getClient(): QdrantClient {
     if (!this.client) {
+      const apiKey = QDRANT_API_KEY.value();
+      const clusterUrl = QDRANT_CLUSTER_URL.value();
+      if (!apiKey || !clusterUrl) {
+        throw new Error(
+          "QDRANT_API_KEY or QDRANT_CLUSTER_URL is not set in environment variables."
+        );
+      }
       this.client = new QdrantClient({
-        apiKey: QDRANT_API_KEY.value(),
-        url: QDRANT_CLUSTER_URL.value(),
+        apiKey: apiKey,
+        url: clusterUrl,
       });
     }
     return this.client;
