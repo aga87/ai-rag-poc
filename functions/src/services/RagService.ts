@@ -60,7 +60,15 @@ export class RagService {
 
     debugLog("Retrieving relevant chunks from knowledge base...");
     const chunks = await this.retrieveRelevantChunks(knowledgeBase, query);
-    return await this.openAiService.askOpenAI(query, chunks);
+
+    const userPrompt = `Answer the question using only the following documentation:\n\n${chunks.join(
+      "\n---\n"
+    )}\n\nQuestion: ${query}`;
+
+    const systemPrompt =
+      "You are a helpful assistant that answers based only on the given documentation.";
+
+    return await this.openAiService.ask(systemPrompt, userPrompt);
   }
 
   private async retrieveRelevantChunks(
