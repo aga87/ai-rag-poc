@@ -1,0 +1,131 @@
+import { GoogleCloudStorageService } from "./GoogleCloudStorageService";
+import { OpenAiApiService } from "./OpenAIService";
+import { VectorStoreService } from "./VectorStoreService";
+import { parsePdf } from "../utils/parsePdf";
+import { debugLog } from "../startup/debug";
+import { type EmbeddedChunk } from "../types";
+
+export class RagService {
+  private openAiService: OpenAiApiService;
+  private googleCloudStorageService: GoogleCloudStorageService;
+  private vectorStoreService: VectorStoreService;
+
+  private bucketName = "mg_rag_poc_docs";
+  private bucketFileName = "photography-content.pdf";
+  private vectorStoreCollectionName = "knowledge_base";
+
+  constructor(
+    openAiService: OpenAiApiService,
+    googleCloudStorageService: GoogleCloudStorageService,
+    vectorStoreService: VectorStoreService
+  ) {
+    this.openAiService = openAiService;
+    this.googleCloudStorageService = googleCloudStorageService;
+    this.vectorStoreService = vectorStoreService;
+  }
+
+  public async loadKnowledgeBase(): Promise<EmbeddedChunk[]> {
+    debugLog("Loading knowledge base: reading PDF from bucket...");
+    const pdfBuffer = await this.googleCloudStorageService.readFileContents(
+      this.bucketName,
+      this.bucketFileName
+    );
+
+    debugLog("Loading knowledge base: parsing PDF into chunks...");
+    const chunks = await this.parsePdfToParagraphBasedChunks(pdfBuffer);
+
+    debugLog("Loading knowledge base: creating embeddings...");
+
+    const embeddings: EmbeddedChunk[] = await Promise.all(
+      chunks.map(async (chunk) => ({
+        content: chunk,
+        embedding: await this.openAiService.createEmbedding(chunk),
+      }))
+    );
+
+    debugLog("Loading knowledge base: saving embeddings to vector DB...");
+    await this.vectorStoreService.upsertChunks(
+      this.vectorStoreCollectionName,
+      embeddings
+    );
+
+    debugLog("Knowledge base loaded.");
+
+    return embeddings;
+  }
+
+  public async ask(query: string): Promise<string> {
+    // TODO: load on app start or on file upload, and read from the DB on each request
+    const knowledgeBase = await this.loadKnowledgeBase();
+
+    debugLog("Retrieving relevant chunks from knowledge base...");
+    const chunks = await this.retrieveRelevantChunks(knowledgeBase, query);
+    return await this.openAiService.askOpenAI(query, chunks);
+  }
+
+  private async retrieveRelevantChunks(
+    knowledgeBase: EmbeddedChunk[],
+    query: string,
+    topK = 5
+  ): Promise<string[]> {
+    const queryEmbedding = await this.openAiService.createEmbedding(query);
+    const similarities = knowledgeBase.map((chunk) => ({
+      content: chunk.content,
+      similarity: this.getCosineSimilarity(queryEmbedding, chunk.embedding),
+    }));
+    return similarities
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, topK)
+      .map((c) => c.content);
+  }
+
+  /**
+   * Note: for best results, consider excluding title pages and TOC from the PDF
+   */
+  public async parsePdfToParagraphBasedChunks(
+    pdfBuffer: Buffer,
+    maxWordsPerChunk = 500
+  ): Promise<string[]> {
+    debugLog(
+      "Parsing PDF to chunks with proper greedy grouping (~500 words per chunk without cutting text mid-paragraph)..."
+    );
+    const text = await parsePdf(pdfBuffer);
+
+    // Split by paragraph (2 or more line breaks)
+    const paragraphs = text
+      .split(/\n{2,}/)
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+
+    const chunks: string[] = [];
+    let currentChunk: string[] = [];
+    let wordCount = 0;
+
+    for (const para of paragraphs) {
+      const words = para.split(/\s+/);
+      if (
+        wordCount + words.length > maxWordsPerChunk &&
+        currentChunk.length > 0
+      ) {
+        chunks.push(currentChunk.join("\n\n"));
+        currentChunk = [];
+        wordCount = 0;
+      }
+      currentChunk.push(para);
+      wordCount += words.length;
+    }
+
+    if (currentChunk.length > 0) {
+      chunks.push(currentChunk.join("\n\n"));
+    }
+
+    return chunks;
+  }
+
+  private getCosineSimilarity(a: number[], b: number[]): number {
+    const dot = a.reduce((sum, val, i) => sum + val * b[i], 0);
+    const normA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
+    const normB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
+    return dot / (normA * normB);
+  }
+}
