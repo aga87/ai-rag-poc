@@ -25,18 +25,20 @@ export class RagService {
   }
 
   public async loadKnowledgeBase() {
-    debugLog("Loading knowledge base: reading PDF from bucket...");
+    const LOG_ID = "loadKnowledgeBase";
+
+    debugLog(`${LOG_ID}: reading PDF from bucket...`);
 
     const pdfBuffer = await this.googleCloudStorageService.readFileContents(
       this.bucketName,
       this.bucketFileName
     );
 
-    debugLog("Loading knowledge base: parsing PDF into chunks...");
+    debugLog(`${LOG_ID}: parsing PDF into chunks...`);
 
     const chunks = await this.parsePdfToParagraphBasedChunks(pdfBuffer);
 
-    debugLog("Loading knowledge base: creating embeddings...");
+    debugLog(`${LOG_ID}: creating embeddings...`);
 
     const embeddings: EmbeddedChunk[] = await Promise.all(
       chunks.map(async (chunk) => ({
@@ -45,26 +47,25 @@ export class RagService {
       }))
     );
 
-    debugLog(
-      "Loading knowledge base: Deleting existing knowledge base if exists..."
-    );
+    debugLog(`${LOG_ID}: Deleting existing knowledge base if exists...`);
 
     await this.vectorStoreService.deleteCollectionIfExists(
       this.vectorStoreCollectionName
     );
 
-    debugLog("Loading knowledge base: saving embeddings to vector DB...");
+    debugLog(`${LOG_ID}: saving embeddings to vector DB...`);
 
     await this.vectorStoreService.upsertChunks(
       this.vectorStoreCollectionName,
       embeddings
     );
 
-    debugLog("Knowledge base loaded.");
+    debugLog(`${LOG_ID}: Knowledge base loaded.`);
   }
 
   public async ask(query: string): Promise<string> {
     debugLog("Retrieving relevant chunks from knowledge base...");
+
     const chunks = await this.retrieveRelevantChunks(query);
 
     const userPrompt = `Answer the question using only the following documentation:\n\n${chunks.join(
