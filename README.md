@@ -2,6 +2,26 @@
 
 Classic **RAG setup with persistent knowledge ingestion**, followed by **runtime Q&A using pre-indexed knowledge**, all within a **Node.js + OpenAI** environment.
 
+This project demonstrates a pipeline for:
+
+1. Ingesting and embedding knowledge from static sources
+
+	-	Reads PDF files from Google Cloud Storage
+	-	Splits documents into paragraph-based chunks
+	-	Generates OpenAI embeddings (text-embedding-3-small, dim: 1536)
+	-	Persists embeddings + text content into Qdrant
+
+2. Retrieving relevant context at query time using Vector Search (K-Nearest Neighbors)
+
+	-	Performs semantic search in Qdrant using cosine similarity
+	-	Returns top-K matches (default: 5 for speed + relevance balance)
+	-	Includes payloads containing the original text chunks
+
+3. Answering questions using OpenAI models restricted to the retrieved documentation
+
+	-	Injects results into a structured system/user prompt
+	-	Uses OpenAI to answer only from the provided documentation
+
 
 ## Tech stack
 
