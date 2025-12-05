@@ -3,6 +3,7 @@ import { OpenAiApiService } from "./OpenAIService";
 import { VectorStoreService } from "./VectorStoreService";
 import { parsePdf } from "../utils/parsePdf";
 import { debugLog } from "../startup/debug";
+import { getErrorStatusCode, HttpError } from "../models";
 import { type EmbeddedChunk } from "../types";
 
 export class RagService {
@@ -81,13 +82,30 @@ export class RagService {
   private async retrieveRelevantChunks(query: string, topK = 5) {
     const queryEmbedding = await this.openAiService.createEmbedding(query);
 
-    const results = await this.vectorStoreService.search(
-      this.vectorStoreCollectionName,
-      queryEmbedding,
-      topK
-    );
+    try {
+      const results = await this.vectorStoreService.search(
+        this.vectorStoreCollectionName,
+        queryEmbedding,
+        topK
+      );
 
-    return results.map((r) => r.content);
+      return results.map((r) => r.content);
+    } catch (err: unknown) {
+      const statusCode = getErrorStatusCode(err);
+
+      if (
+        statusCode === 404 ||
+        (err instanceof Error &&
+          err.message.toLowerCase().includes("not found"))
+      ) {
+        throw new HttpError(
+          "No knowledge base found. Please load a knowledge base first.",
+          404
+        );
+      }
+
+      throw err;
+    }
   }
 
   /**
