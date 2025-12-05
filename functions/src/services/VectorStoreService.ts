@@ -9,6 +9,27 @@ export const QDRANT_CLUSTER_URL = defineSecret("QDRANT_CLUSTER_URL");
 export class VectorStoreService {
   private client: QdrantClient | null = null;
 
+  public async search(
+    collectionName: string,
+    queryEmbedding: number[],
+    /**
+     * topK - how many nearest-neighbor results
+     * 5 is a safe, fast, and commonly useful number of results that gives meaningful matches without wasting compute or returning too much irrelevant data
+     */
+    topK = 5
+  ) {
+    const result = await this.getClient().search(collectionName, {
+      vector: queryEmbedding,
+      limit: topK,
+      with_payload: true,
+    });
+
+    return result.map((point) => ({
+      content: point.payload?.content ?? "",
+      score: point.score,
+    }));
+  }
+
   public async upsertChunks(collectionName: string, chunks: EmbeddedChunk[]) {
     await this.createCollectionIfNotExists(collectionName);
     await this.getClient().upsert(collectionName, {

@@ -24,14 +24,16 @@ export class RagService {
     this.vectorStoreService = vectorStoreService;
   }
 
-  public async loadKnowledgeBase(): Promise<EmbeddedChunk[]> {
+  public async loadKnowledgeBase() {
     debugLog("Loading knowledge base: reading PDF from bucket...");
+
     const pdfBuffer = await this.googleCloudStorageService.readFileContents(
       this.bucketName,
       this.bucketFileName
     );
 
     debugLog("Loading knowledge base: parsing PDF into chunks...");
+
     const chunks = await this.parsePdfToParagraphBasedChunks(pdfBuffer);
 
     debugLog("Loading knowledge base: creating embeddings...");
@@ -50,16 +52,11 @@ export class RagService {
     );
 
     debugLog("Knowledge base loaded.");
-
-    return embeddings;
   }
 
   public async ask(query: string): Promise<string> {
-    // TODO: load on app start or on file upload, and read from the DB on each request
-    const knowledgeBase = await this.loadKnowledgeBase();
-
     debugLog("Retrieving relevant chunks from knowledge base...");
-    const chunks = await this.retrieveRelevantChunks(knowledgeBase, query);
+    const chunks = await this.retrieveRelevantChunks(query);
 
     const userPrompt = `Answer the question using only the following documentation:\n\n${chunks.join(
       "\n---\n"
@@ -71,20 +68,16 @@ export class RagService {
     return await this.openAiService.ask(systemPrompt, userPrompt);
   }
 
-  private async retrieveRelevantChunks(
-    knowledgeBase: EmbeddedChunk[],
-    query: string,
-    topK = 5
-  ): Promise<string[]> {
+  private async retrieveRelevantChunks(query: string, topK = 5) {
     const queryEmbedding = await this.openAiService.createEmbedding(query);
-    const similarities = knowledgeBase.map((chunk) => ({
-      content: chunk.content,
-      similarity: this.getCosineSimilarity(queryEmbedding, chunk.embedding),
-    }));
-    return similarities
-      .sort((a, b) => b.similarity - a.similarity)
-      .slice(0, topK)
-      .map((c) => c.content);
+
+    const results = await this.vectorStoreService.search(
+      this.vectorStoreCollectionName,
+      queryEmbedding,
+      topK
+    );
+
+    return results.map((r) => r.content);
   }
 
   /**
@@ -128,12 +121,5 @@ export class RagService {
     }
 
     return chunks;
-  }
-
-  private getCosineSimilarity(a: number[], b: number[]): number {
-    const dot = a.reduce((sum, val, i) => sum + val * b[i], 0);
-    const normA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
-    const normB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
-    return dot / (normA * normB);
   }
 }
