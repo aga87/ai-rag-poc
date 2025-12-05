@@ -30,6 +30,19 @@ export class VectorStoreService {
     }));
   }
 
+  public async deleteCollectionIfExists(collectionName: string): Promise<void> {
+    const client = this.getClient();
+
+    const collections = await client.getCollections();
+    const exists = collections.collections.some(
+      (c) => c.name === collectionName
+    );
+
+    if (exists) {
+      await client.deleteCollection(collectionName);
+    }
+  }
+
   public async upsertChunks(collectionName: string, chunks: EmbeddedChunk[]) {
     await this.createCollectionIfNotExists(collectionName);
     await this.getClient().upsert(collectionName, {

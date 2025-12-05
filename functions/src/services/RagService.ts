@@ -45,7 +45,16 @@ export class RagService {
       }))
     );
 
+    debugLog(
+      "Loading knowledge base: Deleting existing knowledge base if exists..."
+    );
+
+    await this.vectorStoreService.deleteCollectionIfExists(
+      this.vectorStoreCollectionName
+    );
+
     debugLog("Loading knowledge base: saving embeddings to vector DB...");
+
     await this.vectorStoreService.upsertChunks(
       this.vectorStoreCollectionName,
       embeddings
@@ -122,4 +131,29 @@ export class RagService {
 
     return chunks;
   }
+
+  // TODO: the code below is for when we store things in memory instead of DB, we need ot manually get cosine similarity
+
+  // private async retrieveRelevantChunks(
+  //   knowledgeBase: EmbeddedChunk[],
+  //   query: string,
+  //   topK = 5
+  // ): Promise<string[]> {
+  //   const queryEmbedding = await this.openAiService.createEmbedding(query);
+  //   const similarities = knowledgeBase.map((chunk) => ({
+  //     content: chunk.content,
+  //     similarity: this.getCosineSimilarity(queryEmbedding, chunk.embedding),
+  //   }));
+  //   return similarities
+  //     .sort((a, b) => b.similarity - a.similarity)
+  //     .slice(0, topK)
+  //     .map((c) => c.content);
+  // }
+
+  // private getCosineSimilarity(a: number[], b: number[]): number {
+  //   const dot = a.reduce((sum, val, i) => sum + val * b[i], 0);
+  //   const normA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
+  //   const normB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
+  //   return dot / (normA * normB);
+  // }
 }
