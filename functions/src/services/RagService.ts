@@ -3,6 +3,7 @@ import { OpenAiApiService } from "./OpenAIService";
 import { VectorStoreService } from "./VectorStoreService";
 import { parsePdf } from "../utils/parsePdf";
 import { debugLog } from "../startup/debug";
+import { getErrorStatusCode, HttpError } from "../models";
 import { type EmbeddedChunk } from "../types";
 
 export class RagService {
@@ -24,17 +25,21 @@ export class RagService {
     this.vectorStoreService = vectorStoreService;
   }
 
-  public async loadKnowledgeBase(): Promise<EmbeddedChunk[]> {
-    debugLog("Loading knowledge base: reading PDF from bucket...");
+  public async loadKnowledgeBase() {
+    const LOG_ID = "loadKnowledgeBase";
+
+    debugLog(`${LOG_ID}: reading PDF from bucket...`);
+
     const pdfBuffer = await this.googleCloudStorageService.readFileContents(
       this.bucketName,
       this.bucketFileName
     );
 
-    debugLog("Loading knowledge base: parsing PDF into chunks...");
+    debugLog(`${LOG_ID}: parsing PDF into chunks...`);
+
     const chunks = await this.parsePdfToParagraphBasedChunks(pdfBuffer);
 
-    debugLog("Loading knowledge base: creating embeddings...");
+    debugLog(`${LOG_ID}: creating embeddings...`);
 
     const embeddings: EmbeddedChunk[] = await Promise.all(
       chunks.map(async (chunk) => ({
@@ -43,23 +48,26 @@ export class RagService {
       }))
     );
 
-    debugLog("Loading knowledge base: saving embeddings to vector DB...");
+    debugLog(`${LOG_ID}: Deleting existing knowledge base if exists...`);
+
+    await this.vectorStoreService.deleteCollectionIfExists(
+      this.vectorStoreCollectionName
+    );
+
+    debugLog(`${LOG_ID}: saving embeddings to vector DB...`);
+
     await this.vectorStoreService.upsertChunks(
       this.vectorStoreCollectionName,
       embeddings
     );
 
-    debugLog("Knowledge base loaded.");
-
-    return embeddings;
+    debugLog(`${LOG_ID}: Knowledge base loaded.`);
   }
 
   public async ask(query: string): Promise<string> {
-    // TODO: load on app start or on file upload, and read from the DB on each request
-    const knowledgeBase = await this.loadKnowledgeBase();
-
     debugLog("Retrieving relevant chunks from knowledge base...");
-    const chunks = await this.retrieveRelevantChunks(knowledgeBase, query);
+
+    const chunks = await this.retrieveRelevantChunks(query);
 
     const userPrompt = `Answer the question using only the following documentation:\n\n${chunks.join(
       "\n---\n"
@@ -71,20 +79,33 @@ export class RagService {
     return await this.openAiService.ask(systemPrompt, userPrompt);
   }
 
-  private async retrieveRelevantChunks(
-    knowledgeBase: EmbeddedChunk[],
-    query: string,
-    topK = 5
-  ): Promise<string[]> {
+  private async retrieveRelevantChunks(query: string, topK = 5) {
     const queryEmbedding = await this.openAiService.createEmbedding(query);
-    const similarities = knowledgeBase.map((chunk) => ({
-      content: chunk.content,
-      similarity: this.getCosineSimilarity(queryEmbedding, chunk.embedding),
-    }));
-    return similarities
-      .sort((a, b) => b.similarity - a.similarity)
-      .slice(0, topK)
-      .map((c) => c.content);
+
+    try {
+      const results = await this.vectorStoreService.search(
+        this.vectorStoreCollectionName,
+        queryEmbedding,
+        topK
+      );
+
+      return results.map((r) => r.content);
+    } catch (err: unknown) {
+      const statusCode = getErrorStatusCode(err);
+
+      if (
+        statusCode === 404 ||
+        (err instanceof Error &&
+          err.message.toLowerCase().includes("not found"))
+      ) {
+        throw new HttpError(
+          "No knowledge base found. Please load a knowledge base first.",
+          404
+        );
+      }
+
+      throw err;
+    }
   }
 
   /**
@@ -128,12 +149,5 @@ export class RagService {
     }
 
     return chunks;
-  }
-
-  private getCosineSimilarity(a: number[], b: number[]): number {
-    const dot = a.reduce((sum, val, i) => sum + val * b[i], 0);
-    const normA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
-    const normB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
-    return dot / (normA * normB);
   }
 }

@@ -10,6 +10,7 @@ Classic **RAG setup with persistent knowledge ingestion**, followed by **runtime
 - Firebase Functions
 - OpenAI API
 - Google Cloud Storage
+- Qdrant Vector Database
 
 
 ## Git Branches
@@ -46,13 +47,3 @@ const teslaClientId = defineSecret("SECRET_NAME");
 
 const value = teslaClientId.value() // but inside a fn (not in global scope)
 ```
-
-### In local development
-
-When using the Firebase Emulator:
-
-- When you spin up the Firebase emulator it will say: `functions: Loaded environment variables from .env.local.`, BUT
-- If the variable is also defined with `defineSecret` (or similar) and exists in Google Secret Manager, the Firebase emulator will use the value from the Secret Manager even if accessed with `process.env`!
-- Only if the variable does not exist in Google Secret Manager, the Firebase Emulator will use the one defined in the local `.env`
-
-Please also check `env.example` for non-secret local development configuration!
