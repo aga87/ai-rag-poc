@@ -9,6 +9,40 @@ export const QDRANT_CLUSTER_URL = defineSecret("QDRANT_CLUSTER_URL");
 export class VectorStoreService {
   private client: QdrantClient | null = null;
 
+  public async search(
+    collectionName: string,
+    queryEmbedding: number[],
+    /**
+     * topK - how many nearest-neighbor results
+     * 5 is a safe, fast, and commonly useful number of results that gives meaningful matches without wasting compute or returning too much irrelevant data
+     */
+    topK = 5
+  ) {
+    const result = await this.getClient().search(collectionName, {
+      vector: queryEmbedding,
+      limit: topK,
+      with_payload: true,
+    });
+
+    return result.map((point) => ({
+      content: point.payload?.content ?? "",
+      score: point.score,
+    }));
+  }
+
+  public async deleteCollectionIfExists(collectionName: string): Promise<void> {
+    const client = this.getClient();
+
+    const collections = await client.getCollections();
+    const exists = collections.collections.some(
+      (c) => c.name === collectionName
+    );
+
+    if (exists) {
+      await client.deleteCollection(collectionName);
+    }
+  }
+
   public async upsertChunks(collectionName: string, chunks: EmbeddedChunk[]) {
     await this.createCollectionIfNotExists(collectionName);
     await this.getClient().upsert(collectionName, {
@@ -43,9 +77,16 @@ export class VectorStoreService {
 
   private getClient(): QdrantClient {
     if (!this.client) {
+      const apiKey = QDRANT_API_KEY.value();
+      const clusterUrl = QDRANT_CLUSTER_URL.value();
+      if (!apiKey || !clusterUrl) {
+        throw new Error(
+          "QDRANT_API_KEY or QDRANT_CLUSTER_URL is not set in environment variables."
+        );
+      }
       this.client = new QdrantClient({
-        apiKey: QDRANT_API_KEY.value(),
-        url: QDRANT_CLUSTER_URL.value(),
+        apiKey: apiKey,
+        url: clusterUrl,
       });
     }
     return this.client;
